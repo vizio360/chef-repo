@@ -75,7 +75,7 @@ nInstances.times do |index|
     execute "set ulimit for user" do
         command "echo '#{username} hard nofile 200' >> /etc/security/limits.conf && echo '#{username} soft nofile 200' >> /etc/security/limits.conf"
         user "root"
-        action :nothing
+        action :run
         not_if { node.attribute?(username+"_ulimit_set") }
     end
 
