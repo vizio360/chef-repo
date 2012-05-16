@@ -32,8 +32,17 @@ node[:hermes][:gems].each do |gem|
     end
 end
 
-# get the number of hermes instances to run
-nInstances = node[:hermes][:number_of_instances]
+if not node.attribute?("number_of_instances") 
+    # get the number of hermes instances to run
+    nInstances = node[:hermes][:number_of_instances]
+    node.set["number_of_instances"] = nInstances 
+    node.save
+else
+    nInstances = node.attribute("number_of_instances")
+end
+    
+    
+
 
 nInstances.times do |index|
     username = "HERMES-"+index.to_s
