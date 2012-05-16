@@ -16,13 +16,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+#
 
 
+# installing all the gems necessary
+node[:hermes][:gems].each do |gem|
+    gem_package gem[:name] do
+        if gem[:version] && !gem[:version].empty?
+            version gem[:version]
+        end
+        if gem[:source]
+            source gem[:source]
+        end
+        action :install
+    end
+end
+
+# get the number of hermes instances to run
 nInstances = node[:hermes][:number_of_instances]
 
 nInstances.times do |index|
     username = "HERMES-"+index.to_s
     homedir = "/home/"+username
+    # creating user
     user username do
         action :create
         system true
@@ -30,6 +46,7 @@ nInstances.times do |index|
         home homedir
     end
 
+    # creating user home folder
     directory homedir+"/hermes" do
         mode 0755
         owner username
@@ -37,22 +54,29 @@ nInstances.times do |index|
         action :create
     end
 
+    # checking out Hermes
     git homedir+"/hermes" do
         repository "git://github.com/vizio360/messaggero.git"
         reference "zeus"
         action :sync
     end
 
-=begin
-    # deploying hermes in user homedir 
-    deploy homedir+"/hermes" do
-        repo "git://github.com/vizio360/messaggero.git"
-        revision "zeus" # or "HEAD" or "TAG_for_1.0" or (subversion) "1234"
-        user username
-        shallow_clone true
-        action :deploy # or :rollback
-        scm_provider Chef::Provider::Git # is the default, for svn: Chef::Provider::Subversion
+    #
+    # setup ulimit for user
+    execute "set ulimit for user" do
+        command "echo '#{username} hard nofile 200' >> /etc/security/limits.conf && echo '#{username} soft nofile 200' >> /etc/security/limits.conf"
+        user "root"
+        action :nothing
+        not_if { node.attribute?(username+"_ulimit_set") }
     end
-=end
+
+    ruby_block "ulimit has been set" do
+        block do
+            node.set[username+"_ulimit_set"] = true
+            node.save
+        end
+        action :nothing
+    end
+
 end
     
