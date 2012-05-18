@@ -2,7 +2,7 @@
 # Cookbook Name:: hermes
 # Recipe:: default
 #
-# Copyright 2012, Example Com
+# Copyright 2012, 2bitcc
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 # limitations under the License.
 #
 #
-
 
 # installing all the gems necessary
 node[:hermes][:gems].each do |gem|
@@ -38,14 +37,14 @@ if not node.attribute?("number_of_instances")
     node.set["number_of_instances"] = nInstances 
     node.save
 else
-    nInstances = node.attribute("number_of_instances")
+    nInstances = node["number_of_instances"]
 end
     
     
 
 
 nInstances.times do |index|
-    username = "HERMES-"+index.to_s
+    username = "HERMES-"+(index+1).to_s
     homedir = "/home/"+username
     # creating user
     user username do
@@ -63,29 +62,70 @@ nInstances.times do |index|
         action :create
     end
 
-    # checking out Hermes
-    git homedir+"/hermes" do
-        repository "git://github.com/vizio360/messaggero.git"
-        reference "zeus"
-        action :sync
+    remote_file homedir+"/hermes.tar.gz" do
+        source "http://dl.dropbox.com/u/4656840/hermes.tar.gz"
+        owner username
+        mode 0644
     end
 
-    #
+    execute "tar -zxf hermes.tar.gz" do
+        cwd homedir
+        user username
+    end
+
+    # creating the config file for Hermes
+    template homedir+"/hermes/config.json" do
+        source "hermes.conf.erb"
+        owner username
+        action :create
+        variables(
+            :servertype => node[:hermes][:servertype],
+            :port => node[:hermes][:starting_port] + index 
+        )
+        not_if { node.attribute?(username+"_not_first_run") }
+    end
+
     # setup ulimit for user
     execute "set ulimit for user" do
         command "echo '#{username} hard nofile 200' >> /etc/security/limits.conf && echo '#{username} soft nofile 200' >> /etc/security/limits.conf"
         user "root"
         action :run
-        not_if { node.attribute?(username+"_ulimit_set") }
+        not_if { node.attribute?(username+"_not_first_run") }
     end
 
-    ruby_block "ulimit has been set" do
+    # create .init folder for upstart user jobs
+    directory homedir+"/.init" do
+        mode 0755
+        owner username
+        recursive true
+        action :create
+        not_if { node.attribute?(username+"_not_first_run") }
+    end
+
+    # creating the upstart conf file
+    template homedir+"/.init/#{username}.conf" do
+        source "upstart.conf.erb"
+        owner username
+        action :create
+        not_if { node.attribute?(username+"_not_first_run") }
+    end
+
+    # run upstart service
+    execute "start upstart service" do
+        command "sudo -u #{username} start #{username}"
+        cwd homedir
+        action :run
+        not_if { node.attribute?(username+"_not_first_run") }
+    end
+
+    ruby_block "set not first run flag" do
         block do
-            node.set[username+"_ulimit_set"] = true
+            node.set[username+"_not_first_run"] = true
             node.save
         end
         action :nothing
     end
-
 end
-    
+
+# setting a reboot flag to reboot machine if chef run was successful    
+node.run_state[:reboot] = true

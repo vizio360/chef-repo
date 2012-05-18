@@ -1,0 +1,10 @@
+description     "start hermes"
+
+start on startup
+start on runlevel [2345]
+stop on shutdown
+
+respawn
+
+exec bash -c "cd hermes && ./startup.sh >> service.out 2>&1"
+
