@@ -85,6 +85,19 @@ nInstances.times do |index|
         not_if { node.attribute?(username+"_not_first_run") }
     end
 
+    # setup startup script
+    template homedir+"/hermes/startup.sh" do
+        source "startup.sh.erb"
+        owner username
+        action :create
+        mode '0755'
+        variables(
+            :delay => index * 5 # wait 5 seconds between services
+        )
+        not_if { node.attribute?(username+"_not_first_run") }
+    end
+
+
     # setup ulimit for user
     execute "set ulimit for user" do
         command "echo '#{username} hard nofile 200' >> /etc/security/limits.conf && echo '#{username} soft nofile 200' >> /etc/security/limits.conf"
