@@ -41,9 +41,17 @@ else
 end
     
     
+superuser = "zeus"
+# creating super user
+user superuser do
+    action :create
+    system true
+    shell "/bin/false"
+end
 
 
 nInstances.times do |index|
+
     username = "HERMES-"+(index+1).to_s
     homedir = "/home/"+username
     # creating user
@@ -54,10 +62,46 @@ nInstances.times do |index|
         home homedir
     end
 
+    # creating group with the same name as the user
+    group username do
+        action :create
+        members [username]
+    end
+
     # creating user home folder
-    directory homedir+"/hermes" do
-        mode 0755
+    directory homedir do
+        mode "0755"
         owner username
+        group username
+        recursive true
+        action :create
+    end
+    
+    directory homedir+"/var" do
+        owner username
+        group username
+        recursive true
+        action :create
+    end
+    directory homedir+"/var/log" do
+        owner username
+        group username
+        recursive true
+        action :create
+    end
+
+    directory homedir+"/hermes_plugins" do
+        mode "0555"
+        owner username
+        group username
+        recursive true
+        action :create
+    end
+
+    directory homedir+"/hermes_plugins_live" do
+        mode "0555"
+        owner username
+        group username
         recursive true
         action :create
     end
@@ -65,22 +109,36 @@ nInstances.times do |index|
     remote_file homedir+"/hermes.tar.gz" do
         source "http://dl.dropbox.com/u/4656840/hermes.tar.gz"
         owner username
-        mode 0644
+        mode "0600"
     end
 
-    execute "tar -zxf hermes.tar.gz" do
+    execute "extract hermes files" do
+        command "tar -zxf hermes.tar.gz"
         cwd homedir
         user username
     end
 
+    execute "changing mode to all hermes subfolders" do
+        command "find #{homedir}/hermes -type d -exec chmod 750 {} \\;"
+        user "root"
+    end
+
+    execute "changing owner and group to the hermes folder" do
+        command "chown -R #{superuser}:#{username} #{homedir}/hermes"
+        user "root"
+    end
+    
     # creating the config file for Hermes
     template homedir+"/hermes/config.json" do
         source "hermes.conf.erb"
-        owner username
+        owner superuser
+        group username
+        mode "0740"
         action :create
         variables(
             :servertype => node[:hermes][:servertype],
-            :port => node[:hermes][:starting_port] + index 
+            :port => node[:hermes][:starting_port] + index,
+            :logFolder => homedir+"/var/log"
         )
         not_if { node.attribute?(username+"_not_first_run") }
     end
@@ -88,9 +146,10 @@ nInstances.times do |index|
     # setup startup script
     template homedir+"/hermes/startup.sh" do
         source "startup.sh.erb"
-        owner username
+        owner superuser
+        group username
         action :create
-        mode '0755'
+        mode "0750"
         variables(
             :delay => index * 5 # wait 5 seconds between services
         )
@@ -108,8 +167,9 @@ nInstances.times do |index|
 
     # create .init folder for upstart user jobs
     directory homedir+"/.init" do
-        mode 0755
+        mode "0750"
         owner username
+        group username
         recursive true
         action :create
         not_if { node.attribute?(username+"_not_first_run") }
@@ -119,6 +179,7 @@ nInstances.times do |index|
     template homedir+"/.init/#{username}.conf" do
         source "upstart.conf.erb"
         owner username
+        group username
         action :create
         not_if { node.attribute?(username+"_not_first_run") }
     end
@@ -140,5 +201,3 @@ nInstances.times do |index|
     end
 end
 
-# setting a reboot flag to reboot machine if chef run was successful    
-node.run_state[:reboot] = true
