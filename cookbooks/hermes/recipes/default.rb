@@ -31,6 +31,7 @@ node[:hermes][:gems].each do |gem|
     end
 end
 
+
 if not node.attribute?("number_of_instances") 
     # get the number of hermes instances to run
     nInstances = node[:hermes][:number_of_instances]
@@ -40,7 +41,44 @@ else
     nInstances = node["number_of_instances"]
 end
     
-    
+
+
+
+
+# getting EC2 instance information
+
+require 'rubygems'
+require 'rest_client'
+
+$ec2InfoWS = node[:amazon][:meta_data_ws]
+
+def getInstanceMetaData(data)
+    begin
+        response = RestClient.get $ec2InfoWS + data
+        return response.body
+    rescue => e
+        puts "problem while getting #{data} : #{e}"
+        puts "amazon:meta_data_ws = " + $ec2InfoWS
+        exit FALSE
+    end
+end
+
+instanceInfo = {}
+instanceInfo["instance-id"] = getInstanceMetaData("instance-id")
+instanceInfo["public-hostname"] = getInstanceMetaData("public-hostname")
+instanceInfo["instance-type"] = getInstanceMetaData("instance-type")
+
+puts "EC2 instance info"
+instanceInfo.each_pair {|key, value| puts key+" => "+value}
+
+# FIXME
+# we now need to PUT the instance info to ZEUS
+
+
+##########
+
+
+
 superuser = "zeus"
 # creating super user
 user superuser do
