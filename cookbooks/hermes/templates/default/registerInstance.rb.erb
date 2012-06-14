@@ -1,0 +1,44 @@
+require 'rubygems'
+require 'rest_client'
+require 'json'
+
+$ec2InfoWS = "<%= @ec2InfoWS %>"
+zeusEndPoint = "<%= @zeusEndPoint %>"
+
+def getInstanceMetaData(data)
+    begin
+        response = RestClient.get $ec2InfoWS + data
+        return response.body
+    rescue => e
+        # FIXME maybe add 3 attempts to get the data before exiting
+        puts "problem while getting #{data} : #{e}"
+        puts "amazon:meta_data_ws = " + $ec2InfoWS
+        exit FALSE
+    end
+end
+
+instanceInfo = {}
+instanceInfo["instance-id"] = getInstanceMetaData("instance-id")
+instanceInfo["public-hostname"] = getInstanceMetaData("public-hostname")
+instanceInfo["instance-type"] = getInstanceMetaData("instance-type")
+
+puts "EC2 instance info"
+instanceInfo.each_pair {|key, value| puts key+" => "+value}
+
+# we now need to PUT the instance info to ZEUS
+data = {:ip => instanceInfo["public-hostname"], :type => instanceInfo["instance-type"]} 
+begin
+    response = RestClient.put zeusEndPoint + "machine/" + instanceInfo["instance-id"], data.to_json, {:content_type => :json }
+    case response.code
+    when 200
+        puts "Machine #{instanceInfo["instance-id"]} updated!"
+    when 201
+        puts "Machine #{instanceInfo["instance-id"]} created!"
+    end
+rescue => e
+    puts "problem while registering the machine: #{e}"
+    exit FALSE
+end
+
+
+##########

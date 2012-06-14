@@ -38,6 +38,7 @@ require 'uuidtools'
 
 
 
+
 if not node.attribute?("number_of_instances") 
     # get the number of hermes instances to run
     nInstances = node[:hermes][:number_of_instances]
@@ -47,12 +48,7 @@ else
     nInstances = node["number_of_instances"]
 end
     
-
-
-
-
 # getting EC2 instance information
-# FIXME maybe add 3 attempts to get the data before exiting
 
 
 $ec2InfoWS = node[:amazon][:meta_data_ws]
@@ -62,9 +58,10 @@ def getInstanceMetaData(data)
         response = RestClient.get $ec2InfoWS + data
         return response.body
     rescue => e
+        # FIXME maybe add 3 attempts to get the data before exiting
         puts "problem while getting #{data} : #{e}"
         puts "amazon:meta_data_ws = " + $ec2InfoWS
-        exit FALSE
+        Chef::Log.fatal('Cannot get instance information')
     end
 end
 
@@ -73,8 +70,8 @@ instanceInfo["instance-id"] = getInstanceMetaData("instance-id")
 instanceInfo["public-hostname"] = getInstanceMetaData("public-hostname")
 instanceInfo["instance-type"] = getInstanceMetaData("instance-type")
 
-puts "EC2 instance info"
-instanceInfo.each_pair {|key, value| puts key+" => "+value}
+Chef::Log.info("EC2 instance info")
+instanceInfo.each_pair {|key, value| Chef::Log.info(key+" => "+value)}
 
 # we now need to PUT the instance info to ZEUS
 data = {:ip => instanceInfo["public-hostname"], :type => instanceInfo["instance-type"]} 
@@ -82,13 +79,12 @@ begin
     response = RestClient.put node[:zeus][:endPoint] + "machine/" + instanceInfo["instance-id"], data.to_json, {:content_type => :json }
     case response.code
     when 200
-        puts "Machine #{instanceInfo["instance-id"]} updated!"
+        Chef::Log.info("Machine #{instanceInfo["instance-id"]} updated!")
     when 201
-        puts "Machine #{instanceInfo["instance-id"]} created!"
+        Chef::Log.info("Machine #{instanceInfo["instance-id"]} created!")
     end
 rescue => e
-    puts "problem while registering the machine: #{e}"
-    exit FALSE
+    Chef::Log.fatal("problem while registering the machine: #{e}")
 end
 
 
@@ -97,11 +93,76 @@ end
 
 
 superuser = "zeus"
+superuserHome = "/home/"+superuser
 # creating super user
 user superuser do
     action :create
     system true
     shell "/bin/false"
+    home superuserHome
+end
+
+group superuser do
+    action :create
+    members [superuser]
+end
+
+# creating user home folder
+directory superuserHome do
+    mode "0755"
+    owner superuser
+    group superuser
+    recursive true
+    action :create
+end
+
+# setup intance upstart script
+template superuserHome+"/startup.sh" do
+    source "instanceStartup.sh.erb"
+    owner superuser
+    group superuser
+    action :create
+    mode "0750"
+end
+
+# create .init folder for upstart superuser jobs
+directory superuserHome+"/.init" do
+    mode "0750"
+    owner superuser
+    group superuser
+    recursive true
+    action :create
+end
+
+# creating the upstart conf file
+template superuserHome+"/.init/#{superuser}.conf" do
+    source "instanceUpstart.conf.erb"
+    owner superuser
+    group superuser
+    action :create
+end
+
+# setup startup script
+template superuserHome+"/instanceStartup.sh" do
+    source "instanceStartup.sh.erb"
+    owner superuser
+    group superuser
+    action :create
+    mode "0750"
+end
+
+# creating the ruby script for registering
+# the instance on Zeus on startup
+template superuserHome+"/registerInstance.rb" do
+    source "registerInstance.rb.erb"
+    owner superuser
+    group superuser
+    mode "0740"
+    action :create
+    variables(
+        :ec2InfoWS => $ec2InfoWS,
+        :zeusEndPoint => node[:zeus][:endPoint]
+    )
 end
 
 

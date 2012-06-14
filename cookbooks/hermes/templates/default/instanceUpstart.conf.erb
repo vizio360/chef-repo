@@ -1,0 +1,8 @@
+description     "register Instance"
+
+start on startup
+start on runlevel [2345]
+stop on shutdown
+
+exec bash -c "./instanceStartup.sh >> registerInstance.out 2>&1"
+

@@ -3,7 +3,7 @@ description     "start hermes"
 start on startup
 start on runlevel [2345]
 stop on shutdown
-
+normal exit 0 SIGUSR1 SIGTERM
 respawn
 
 exec bash -c "cd hermes && ./startup.sh >> ../var/log/service.out 2>&1"
