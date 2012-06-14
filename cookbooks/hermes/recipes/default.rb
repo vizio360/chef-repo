@@ -31,6 +31,12 @@ node[:hermes][:gems].each do |gem|
     end
 end
 
+require 'rubygems'
+require 'rest_client'
+require 'json'
+require 'uuidtools'
+
+
 
 if not node.attribute?("number_of_instances") 
     # get the number of hermes instances to run
@@ -46,9 +52,8 @@ end
 
 
 # getting EC2 instance information
+# FIXME maybe add 3 attempts to get the data before exiting
 
-require 'rubygems'
-require 'rest_client'
 
 $ec2InfoWS = node[:amazon][:meta_data_ws]
 
@@ -71,8 +76,20 @@ instanceInfo["instance-type"] = getInstanceMetaData("instance-type")
 puts "EC2 instance info"
 instanceInfo.each_pair {|key, value| puts key+" => "+value}
 
-# FIXME
 # we now need to PUT the instance info to ZEUS
+data = {:ip => instanceInfo["public-hostname"], :type => instanceInfo["instance-type"]} 
+begin
+    response = RestClient.put node[:zeus][:endPoint] + "machine/" + instanceInfo["instance-id"], data.to_json, {:content_type => :json }
+    case response.code
+    when 200
+        puts "Machine #{instanceInfo["instance-id"]} updated!"
+    when 201
+        puts "Machine #{instanceInfo["instance-id"]} created!"
+    end
+rescue => e
+    puts "problem while registering the machine: #{e}"
+    exit FALSE
+end
 
 
 ##########
@@ -174,9 +191,13 @@ nInstances.times do |index|
         mode "0740"
         action :create
         variables(
+            :uuid => UUIDTools::UUID.random_create,
             :servertype => node[:hermes][:servertype],
             :port => node[:hermes][:starting_port] + index,
-            :logFolder => homedir+"/var/log"
+            :logFolder => homedir+"/var/log",
+            :maxConnections => node[:hermes][:maxConnections],
+            :amazonMetaDataWS => $ec2InfoWS,
+            :zeusEndPoint => node[:zeus][:endPoint]
         )
         not_if { node.attribute?(username+"_not_first_run") }
     end
