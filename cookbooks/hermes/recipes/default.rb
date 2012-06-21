@@ -89,9 +89,29 @@ end
 
 
 ##########
+# Installing Munin Monitoring Node
+package "munin-node" do
+    action :install
+    options "--force-yes"
+end
 
+allowRegexp = "^"+Regexp.escape(node[:zeus][:internalIP])+"$"
+execute "allow-zeus-on-munin-node" do
+    command "echo \"allow #{allowRegexp} \" | sudo tee --append /etc/munin/munin-node.conf"
+    action :nothing
+end
 
+execute "set-munin-node-hostname" do
+    command "echo \"host-name #{instanceInfo["instance-id"]} \" | sudo tee --append /etc/munin/munin-node.conf"
+    action :nothing
+end
 
+execute "restart munin node" do
+    command "sudo service munin-node restart"
+    action :nothing
+end
+
+##########
 superuser = "zeus"
 superuserHome = "/home/"+superuser
 # creating super user
