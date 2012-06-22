@@ -69,12 +69,13 @@ instanceInfo = {}
 instanceInfo["instance-id"] = getInstanceMetaData("instance-id")
 instanceInfo["public-hostname"] = getInstanceMetaData("public-hostname")
 instanceInfo["instance-type"] = getInstanceMetaData("instance-type")
+instanceInfo["local-ipv4"] = getInstanceMetaData("local-ipv4")
 
 Chef::Log.info("EC2 instance info")
 instanceInfo.each_pair {|key, value| Chef::Log.info(key+" => "+value)}
 
 # we now need to PUT the instance info to ZEUS
-data = {:ip => instanceInfo["public-hostname"], :type => instanceInfo["instance-type"]} 
+data = {:ip => instanceInfo["public-hostname"], :type => instanceInfo["instance-type"], :privateIp => instanceInfo["local-ipv4"]} 
 begin
     response = RestClient.put node[:zeus][:endPoint] + "machine/" + instanceInfo["instance-id"], data.to_json, {:content_type => :json }
     case response.code
@@ -90,6 +91,8 @@ end
 
 ##########
 # Installing Munin Monitoring Node
+##########
+
 package "munin-node" do
     action :install
     options "--force-yes"
@@ -98,17 +101,13 @@ end
 allowRegexp = "^"+Regexp.escape(node[:zeus][:internalIP])+"$"
 execute "allow-zeus-on-munin-node" do
     command "echo \"allow #{allowRegexp} \" | sudo tee --append /etc/munin/munin-node.conf"
-    action :nothing
-end
-
-execute "set-munin-node-hostname" do
-    command "echo \"host-name #{instanceInfo["instance-id"]} \" | sudo tee --append /etc/munin/munin-node.conf"
-    action :nothing
+    action :run
 end
 
 execute "restart munin node" do
     command "sudo service munin-node restart"
-    action :nothing
+    user "root"
+    action :run
 end
 
 ##########
